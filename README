@@ -91,6 +91,11 @@ DESCRIPTION
        CAKE_OBJDIR
 	      Sets the directory where all object files will be created.
 
+       CAKE_PROJECT_VERSION_CMD
+	      Sets  the command to execute that will return the version number
+	      of the project being built. cake then sets a macro equal to this
+	      version.
+
 OPTIONS
        --help Shows this message.
 
@@ -197,10 +202,13 @@ OPTIONS
 	      Overrides the directory where binaries are produced.  ’bin/’  by
 	      default.
 
+       --project-version-cmd=...
+	      Sets  the command to execute that will return the version number
+	      of the project being built.
+
        --include-git-root
-	      Walk  up	directory  path	 to find .git directory. If found, add
-	      path as  a  system  include.   This  is  currently  disabled  by
-	      default, but that may change.
+	      Walk up directory path to find .git  directory.  If  found,  add
+	      path as an include path.	This is enabled by default.
 
        --no-git-root
 	      Disable the git root include.
@@ -335,8 +343,8 @@ PERFORMANCE
        is out of date, versus 2 seconds for, say, Boost.Build.
 
        Cake  also  eliminates the redundant generation of static archive files
-       that  a	 more	hierarchical   build   process	 would	 generate   as
-       intermediaries, saving the cost of running ’ar’.
+       that a more hierarchical build process  would  generate	as  intermedi-
+       aries, saving the cost of running ’ar’.
 
        Cake  doesn’t build all cpp files that you have checked out, only those
        strictly needed to build your particular binary, so you	only  pay  for
@@ -390,4 +398,4 @@ SEE ALSO
 
 
 
-cake 3.0			  March 2013			       CAKE(1)
+cake 3.0			   May 2013			       CAKE(1)

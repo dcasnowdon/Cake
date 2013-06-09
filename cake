@@ -140,6 +140,7 @@ Environment:
     CAKE_<variant>_POSTPREFIX  Sets the execution prefix used while running post-build commands.
     CAKE_BINDIR                Sets the directory where all binary files will be created.
     CAKE_OBJDIR                Sets the directory where all object files will be created.
+    CAKE_PROJECT_VERSION_CMD   Sets the command to execute that will return the version number of the project being built. cake then sets a macro equal to this version.
     
 
 Options:
@@ -174,16 +175,17 @@ Options:
     --LINKFLAGS=<flags>    Sets the flags used while linking.
     --TESTPREFIX=<cmd>     Runs tests with the given prefix, eg. "valgrind --quiet --error-exitcode=1"
     --POSTPREFIX=<cmd>     Runs post execution commands with the given prefix, eg. "timeout 60"
-
+    
     --append-CPPFLAGS=...  Appends the given text to the CPPFLAGS already set.   Useful for adding search paths etc.
     --append-CFLAGS=...    Appends the given text to the CFLAGS already set. Useful for adding search paths etc.
     --append-CXXFLAGS=...  Appends the given text to the CXXFLAGS already set. Useful for adding search paths etc.
     --append-LINKFLAGS=..  Appends the given text to the LINKFLAGS already set. Use for example with `wx-config --libs`
 
     --bindir=...           Overrides the directory where binaries are produced. 'bin/' by default.
+    --project-version-cmd=...  Sets the command to execute that will return the version number of the project being built.
 
-    --include-git-root     Walk up directory path to find .git directory. If found, add path as a system include. 
-                           This is currently disabled by default, but that may change. 
+    --include-git-root     Walk up directory path to find .git directory. If found, add path as an include path. 
+                           This is enabled by default. 
                            
     --no-git-root          Disable the git root include. 
 
@@ -227,21 +229,22 @@ def usage(msg = ""):
 
 
 def printCakeVariables():
-	print "  ID        : " + CAKE_ID
-	print "  VARIANT   : " + Variant
-	print "  CPP       : " + CPP
-	print "  CC        : " + CC
-	print "  CXX       : " + CXX
-	print "  LINKER    : " + LINKER
-	print "  CPPFLAGS  : " + CPPFLAGS
-	print "  CFLAGS    : " + CFLAGS
-	print "  CXXFLAGS  : " + CXXFLAGS
-	print "  LINKFLAGS : " + LINKFLAGS
-	print "  TESTPREFIX: " + TESTPREFIX
-	print "  POSTPREFIX: " + POSTPREFIX
-	print "  BINDIR    : " + BINDIR
-	print "  OBJDIR    : " + OBJDIR
-	print "\n"
+    print "  ID        : " + CAKE_ID
+    print "  VARIANT   : " + Variant
+    print "  CPP       : " + CPP
+    print "  CC        : " + CC
+    print "  CXX       : " + CXX
+    print "  LINKER    : " + LINKER
+    print "  CPPFLAGS  : " + CPPFLAGS
+    print "  CFLAGS    : " + CFLAGS
+    print "  CXXFLAGS  : " + CXXFLAGS
+    print "  LINKFLAGS : " + LINKFLAGS    
+    print "  TESTPREFIX: " + TESTPREFIX
+    print "  POSTPREFIX: " + POSTPREFIX
+    print "  BINDIR    : " + BINDIR
+    print "  OBJDIR    : " + OBJDIR
+    print "  PROJECT_VERSION_CMD : " + PROJECT_VERSION_CMD
+    print "\n"
 
 
 def extractOption(text, option):
@@ -503,7 +506,7 @@ def get_dependencies_for(source_file, quiet, verbose):
     return result
 
 
-def insert_dependencies(sources, ignored, new_file, linkflags, cause, quiet, verbose):
+def insert_dependencies(sources, ignored, new_file, linkflags, cause, quiet, verbose, file_list):
     """Given a set of sources already being compiled, inserts the new file."""
     
     if not new_file.startswith("/"):
@@ -523,6 +526,7 @@ def insert_dependencies(sources, ignored, new_file, linkflags, cause, quiet, ver
     new_headers, new_sources, newcflags, newcxxflags, newlinkflags = get_dependencies_for(new_file, quiet, verbose)
     
     sources[realpath(new_file)] = (newcflags, newcxxflags, cause, new_headers)
+    file_list.insert(new_file)
     
     # merge in link options
     for l in newlinkflags:
@@ -532,11 +536,11 @@ def insert_dependencies(sources, ignored, new_file, linkflags, cause, quiet, ver
     copy.append(new_file)
     
     for h in new_headers:
-        insert_dependencies(sources, ignored, os.path.splitext(h)[0] + ".cpp", linkflags, copy, quiet, verbose)
-        insert_dependencies(sources, ignored, os.path.splitext(h)[0] + ".c", linkflags, copy, quiet, verbose)
+        insert_dependencies(sources, ignored, os.path.splitext(h)[0] + ".cpp", linkflags, copy, quiet, verbose, file_list)
+        insert_dependencies(sources, ignored, os.path.splitext(h)[0] + ".c", linkflags, copy, quiet, verbose, file_list)
 
     for s in new_sources:
-        insert_dependencies(sources, ignored, s, linkflags, copy, quiet, verbose)
+        insert_dependencies(sources, ignored, s, linkflags, copy, quiet, verbose, file_list)
 
 
 def try_set_variant(variant,static_library):
@@ -618,7 +622,7 @@ def generate_rules(source, output_name, generate_test, makefilename, quiet, verb
     
     source = realpath(source)
     file_list.insert( source )
-    insert_dependencies(sources, ignored, source, linkflags, cause, quiet, verbose)
+    insert_dependencies(sources, ignored, source, linkflags, cause, quiet, verbose, file_list)
     
     # compile rule for each object
     for s in sources:
@@ -774,7 +778,7 @@ def find_git_root():
 def main(config_file):
     global CAKE_ID, CPP, CC, CXX, LINKER
     global CPPFLAGS, CFLAGS, CXXFLAGS, LINKFLAGS
-    global TESTPREFIX, POSTPREFIX, BINDIR, OBJDIR
+    global TESTPREFIX, POSTPREFIX, BINDIR, OBJDIR, PROJECT_VERSION_CMD
     global verbose, debug
     global Variant
 
@@ -797,7 +801,7 @@ def main(config_file):
     inPost = False
     tests = []
     post_steps = []
-    include_git_root = False
+    include_git_root = True 
     git_root = None
   
     # Initialise the variables to the debug default
@@ -916,6 +920,10 @@ def main(config_file):
             if not OBJDIR.endswith("/"):
                 OBJDIR = OBJDIR + "/"
             continue
+        
+        if a.startswith("--project-version-cmd="):
+            PROJECT_VERSION_CMD = a[a.index("=")+1:]
+            continue
 
         if a == "--beginpost":
             if inTests:
@@ -993,9 +1001,9 @@ def main(config_file):
         if (git_root):
             if (verbose):
                 print "adding git root " + git_root            
-            CPPFLAGS += " -isystem " + git_root
-            CFLAGS += " -isystem " + git_root
-            CXXFLAGS += " -isystem " + git_root
+            CPPFLAGS += " -I " + git_root
+            CFLAGS += " -I " + git_root
+            CXXFLAGS += " -I " + git_root
         else:
             if (verbose):
                 print "no git root found"
@@ -1018,6 +1026,14 @@ def main(config_file):
         CPPFLAGS += " -DCAKE_" + CAKE_ID
         CFLAGS   += " -DCAKE_" + CAKE_ID
         CXXFLAGS += " -DCAKE_" + CAKE_ID
+        
+    if len(PROJECT_VERSION_CMD) == 0:
+        raise "CAKE_PROJECT_VERSION_CMD must be defined before we get to here"
+    else:    
+        status, project_version = commands.getstatusoutput(PROJECT_VERSION_CMD)         
+        CPPFLAGS += " -DCAKE_PROJECT_VERSION=\\\"" + project_version + "\\\"" 
+        CFLAGS   += " -DCAKE_PROJECT_VERSION=\\\"" + project_version + "\\\""
+        CXXFLAGS += " -DCAKE_PROJECT_VERSION=\\\"" + project_version + "\\\""                   
 
     if debug:
         printCakeVariables()
@@ -1078,6 +1094,7 @@ try:
     CFLAGS = ""      # Flags for C compiler
     CXXFLAGS = ""    # Flags for C++ compiler
     LINKFLAGS = ""   # Flags for the linker
+    PROJECT_VERSION_CMD = "echo 888.888.888-1"  # Command to run that will return the version of the project being built 
  
     TESTPREFIX=""    # commands to stick on the front of any tests being run.  e.g., time or set_affinity, etc.
     POSTPREFIX=""    # commands to stick on the front of any post build commands being run
@@ -1117,6 +1134,7 @@ try:
     CFLAGS = environ("CAKE_CFLAGS", CFLAGS)
     CXXFLAGS = environ("CAKE_CXXFLAGS", CXXFLAGS)
     LINKFLAGS = environ("CAKE_LINKFLAGS", LINKFLAGS)
+    PROJECT_VERSION_CMD = environ("CAKE_PROJECT_VERSION_CMD", LINKFLAGS)
     
     TESTPREFIX = environ("CAKE_TESTPREFIX", TESTPREFIX)
     POSTPREFIX = environ("CAKE_POSTPREFIX", POSTPREFIX)
