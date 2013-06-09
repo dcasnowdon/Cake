@@ -4,6 +4,8 @@ import cPickle
 import sys
 import commands
 import os
+import platform
+import subprocess
 
 if sys.version_info < (2,6):
     from sets import Set
@@ -319,6 +321,11 @@ def force_get_dependencies_for(deps_file, source_file, quiet, verbose):
     explicit_c = "//#" + CAKE_ID + "_CFLAGS="
     explicit_cxx = "//#" + CAKE_ID + "_CXXFLAGS="
     explicit_link = "//#" + CAKE_ID + "_LINKFLAGS="
+
+    explicit_plat_c = "//#" + platform.system() + "_CFLAGS="
+    explicit_plat_cxx = "//#" + platform.system() + "_CXXFLAGS="
+    explicit_plat_link = "//#" + platform.system() + "_LINKFLAGS="
+
     explicit_glob_c = "//#CFLAGS="
     explicit_glob_cxx = "//#CXXFLAGS="
     explicit_glob_link = "//#LINKFLAGS="
@@ -362,6 +369,38 @@ def force_get_dependencies_for(deps_file, source_file, quiet, verbose):
                 else:
                     if debug:
                         print "explicit " + explicit_link + " = '" + result + "' for " + h
+                    linkflags.insert(result.replace("${path}", path))
+                    found = True
+
+        # If not found, check for system specific flags
+        if not found:
+            while True:
+                result, text = extractOption(text, explicit_plat_c)
+                if result is None:
+                    break
+                else:
+                    if debug:
+                        print "explicit " + explicit_plat_c + " = '" + result + "' for " + h
+                    result = result.replace("${path}", path)
+                    cflags[result] = True
+                    found = True
+            while True:
+                result, text = extractOption(text, explicit_plat_cxx)
+                if result is None:
+                    break
+                else:
+                    if debug:
+                        print "explicit " + explicit_plat_cxx + " = '" + result + "' for " + h
+                    result = result.replace("${path}", path)
+                    cxxflags[result] = True
+                    found = True
+            while True:
+                result, text = extractOption(text, explicit_plat_link)
+                if result is None:
+                    break
+                else:
+                    if debug:
+                        print "explicit " + explicit_plat_link + " = '" + result + "' for " + h
                     linkflags.insert(result.replace("${path}", path))
                     found = True
 
@@ -660,11 +699,15 @@ def render_makefile(makefilename, rules):
 
 
 def cpus():
-    f = open("/proc/cpuinfo")
-    t = [x for x in f.readlines() if x.startswith("processor")]
-    f.close()
-    return str(len(t))
-
+    if platform.system() == 'Linux':
+        f = open("/proc/cpuinfo")
+        t = [x for x in f.readlines() if x.startswith("processor")]
+        f.close()
+        return str(len(t))
+    elif platform.system() == 'Darwin':
+        return str(int(subprocess.check_output("sysctl -n hw.ncpu", shell=True)))
+    else:
+        raise "Can not detect platform type, aborting"
 
 def do_generate(source_to_output, tests, post_steps, quiet, verbose, static_library, file_list):
     """Generates all needed makefiles"""
